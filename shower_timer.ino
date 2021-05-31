@@ -1,3 +1,5 @@
+#include <avr/sleep.h>
+
 // Consider using hardware serial if flashing over USB port is not required
 // This is better than SoftwareSerial as it allows simultaneous bidirectional communication and has lower interrupt latency
 // but it can only use pins D8 and D9, and consumes D10 as a PWM timer.
@@ -14,6 +16,9 @@ int solenoid_count;
 const int FLOW_PIN = 2;
 volatile int flow_count;
 
+const int BLUETOOTH_PIN = 3;
+// Connect pin 1 (TXD) to pin 3 (INT1) so that data received on bluetooth wakes the atmega328p up.
+
 const int LM335_PIN = A0;
 // The GPIO output is divided by a 2.2k resistor and the chip,
 // and calibrated using a trimpot to the adj. leg to account for variations in supply voltage
@@ -24,8 +29,13 @@ const int VOLTAGE_PIN = A1;
 // This gives 2.37V for 12V  and 1.00 V for 5V
 // At 12V it draws 0.3 mA
 const float REFERENCE_VOLTAGE = 2.5;
-const float ADC_RESOLUTION = 1024;
+const float ADC_RESOLUTION = 1024.0;
+const float TEMP_VOLTAGE_DIVIDER = 2200.0/(2200.0+820.0);
 
+const long SHOWER_DURATION   = 240000; // 4 minutes in milliseconds
+const long WATCHDOG_DURATION = 300000; // 5 minutes in milliseconds
+unsigned long showerStart;
+unsigned long watchdogStart;
 
 // With the Arduino Uno, AltSoftSerial requires D8 connected to TXD, and D9 connected to RXD on the bluetooth module
 // but using Hardware Serial requires D0 connected to TXD and D1 connected to RXD on the bluetooth module
@@ -55,6 +65,12 @@ void setup() {
   flow_count = 0;
   pinMode(FLOW_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(FLOW_PIN), measureWaterFlow, RISING);
+
+  pinMode(BLUETOOTH_PIN, INPUT);
+  digitalWrite(BLUETOOTH_PIN, LOW);
+
+  showerStart = millis() - SHOWER_DURATION;
+  resetWatchdog();
 }
 
 // Send a 20 ms pulse to SOLENOID_INPUT_B to close, or SOLENOID_INPUT_A to open
@@ -92,7 +108,7 @@ float readFlowRate()
 float readTemperature()
 {
   float count = analogRead(LM335_PIN);
-  float temperature = count * 100.0 * 2.0 * REFERENCE_VOLTAGE / ADC_RESOLUTION - 273.15;
+  float temperature = count * 100.0 / TEMP_VOLTAGE_DIVIDER * REFERENCE_VOLTAGE / ADC_RESOLUTION - 273.15;
   return temperature;
 }
 
@@ -113,17 +129,40 @@ void loop() {
 
     // If we don't use the external reference, correct for the measured voltage
   //temperature = ((temperature + 273.15) * voltage / 5.0) - 273.15;
+
+  unsigned long currentTime = millis();
+  if (solenoid_open && (currentTime - showerStart) > SHOWER_DURATION)
+  {
+    solenoid_open = false;
+    writeSolenoid(solenoid_open);
+  }
+  if ((currentTime - watchdogStart) > WATCHDOG_DURATION)
+  {
+    goToSleep();
+  }
   
   if (Serial.available()) {
     char c = Serial.read();
     if (c == 'O') {
+      // Open the solenoid and start countdown
       solenoid_open = true;
       writeSolenoid(solenoid_open);
+      setShowerCountdown();
+      resetWatchdog();
     } else if (c == 'C') {
+      // Close the solenoid
       solenoid_open = false;
       writeSolenoid(solenoid_open);
+    } else if (c == 'W') {
+      // Wake from sleep command
+      // wakeOnBluetooth has already woken the arduino up
+      // and called resetWatchdog so there is nothing left to do here
+    } else if (c == 'S') {
+      // Go to sleep now for testing purposes
+      goToSleep();
     }
-  }
+    // Invalid entries are silently ignored
+  } 
 
   char buffer[57];
   char tempString[7];
@@ -139,4 +178,52 @@ void loop() {
   Serial.println(buffer);
 
   delay(1000);
+}
+
+void setShowerCountdown()
+{
+  showerStart = millis();
+}
+
+void resetWatchdog()
+{
+  watchdogStart = millis();
+}
+
+// Wake on bluetooth needs connecting pin 2 (RXD) to pin 5 (INT 1)
+
+// The system draws 24.5 mA when connected with only the atmega328p chip. Using the arduino uno draws 32 mA
+// The system spikes to about 140 mA on the meter during solenoid use but as it is a brief pulse I think this is inaccurate. It should use about 800 mA according to valves direct.
+// According to https://rightbattery.com/118-1-5v-aa-duracell-alkaline-battery-tests/ I can expect each battery to give 2348 mAh at 100 mA load (this is longer than at higher loads)
+// So 8 batteries should provide 12 V initially, and drop to 8 V over 767 hours, so the batteries should need replacement about once a month.
+
+// Duracell also has rechargeable 2500 mAh batteries, which perhaps only provide 1.2V like other rechargeable batteries.
+// If so they would output 9.6 v when fresh, dropping to 7.68v over 816 hours, which is 34 days.
+// This would allow two sets to be interchanged for uninterrupted operation once a month
+
+void goToSleep()
+{
+  // Enable sleep mode
+  sleep_enable();
+  detachInterrupt(digitalPinToInterrupt(FLOW_PIN));
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN), wakeOnFlow, RISING);
+  attachInterrupt(digitalPinToInterrupt(BLUETOOTH_PIN), wakeOnBluetooth, LOW);
+  sei();
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_cpu();
+  sleep_disable();
+  resetWatchdog();    // After wake up, reset the watchdog
+}
+
+void wakeOnFlow() {
+  detachInterrupt(digitalPinToInterrupt(FLOW_PIN));
+  detachInterrupt(digitalPinToInterrupt(BLUETOOTH_PIN));
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN), measureWaterFlow, RISING);
+  flow_count=1;
+}
+
+void wakeOnBluetooth() {
+  detachInterrupt(digitalPinToInterrupt(FLOW_PIN));
+  detachInterrupt(digitalPinToInterrupt(BLUETOOTH_PIN));
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN), measureWaterFlow, RISING);
 }
