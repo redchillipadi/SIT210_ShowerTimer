@@ -1,23 +1,29 @@
 #include <avr/sleep.h>
 
-// Consider using hardware serial if flashing over USB port is not required
-// This is better than SoftwareSerial as it allows simultaneous bidirectional communication and has lower interrupt latency
-// but it can only use pins D8 and D9, and consumes D10 as a PWM timer.
-// It is not compatible with ATtiny85 (which lacks the 16 bit timer), so miniturisation attempts will need ATMega328P chip.
-// #include <AltSoftSerial.h>
-// AltSoftSerial btSerial;
+// The HM-10 Bluetooth 4.0 module is connected with
+// VCC to 5V
+// GND to Ground
+// TXD connecting to RXD on the ATmega328P,
+// RXD connecting to TXD (pin 1 on the ATmega328P), and also via a 220 Ohm resistor to INT1 (pin 3) to enable wake on Bluetooth.
 
+const int BLUETOOTH_PIN = 3;  // The pin which is monitored for Bluetooth interrupts
+
+// Use hardware serial for Bluetooth communication, which is better than Software Serial and altSoftwareSerial
+// as it allows simultaneous bidirectional communication and has lower interrupt latency.
+
+// On the ATmega328P, attachInterrupt only works on pins 2 or 3
+const int FLOW_PIN = 2;       // The pin to monitor for water flow signals (each represents 1/450 L)
+volatile int flow_count;      // Store the number of signals received in the last second
+
+// The LM9110 is connected with
+// Solenoid Input A to pin 12 on the ATmega328P.
+// Solenoid Input B to pin 13 on the ATmega328P.
+
+// The solenoid is connected with the lead closest to the water source to Pin 1, and the lead furthest away to Pin 4.
 const int SOLENOID_INPUT_A = 12;
 const int SOLENOID_INPUT_B = 13;
 bool solenoid_open;
 int solenoid_count;
-
-// On the uno, attachInterrupt only works on pins 2 or 3
-const int FLOW_PIN = 2;
-volatile int flow_count;
-
-const int BLUETOOTH_PIN = 3;
-// Connect pin 1 (TXD) to pin 3 (INT1) so that data received on bluetooth wakes the atmega328p up.
 
 const int LM335_PIN = A0;
 // The GPIO output is divided by a 2.2k resistor and the chip,
