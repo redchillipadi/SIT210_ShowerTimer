@@ -5,8 +5,7 @@ const int FLOW_PIN = 2;             // Signals from the Flow sensor are monitore
 const int BLUETOOTH_PIN = 3;        // Signals from the Bluetooth module are monitored on pin D3 (Int 1)
 const int SOLENOID_INPUT_A = 12;    // Control for the motor driver for the solenoid are from pins D12 and D13
 const int SOLENOID_INPUT_B = 13;    // Setting one high and the other low applies a positive or negative voltage to the solenoid
-const int LM335_PIN = A0;           // The output from the temperature sensor is connected to A0
-const int VOLTAGE_PIN = A1;         // Monitor the battery voltage which is connected to A1
+const int VOLTAGE_PIN = A0;         // Monitor the battery voltage which is connected to A0
 
 // GLOBAL VARIABLES FOR STORING STATE
 volatile int flow_count;      // Stores the number of water flow signals received. Each is 1/450 L.
@@ -16,12 +15,10 @@ unsigned long showerStart;    // The time the shower was started (used to determ
 unsigned long watchdogStart;  // The time the last control signal was received (used to determine when to sleep)
 
 // CONSTANTS
-const float REFERENCE_VOLTAGE = 2.49;                             // The external reference voltage chip is calibrated to 2.49V
+const float REFERENCE_VOLTAGE = 2.49;                             // The reference voltage to use (internal is 5V, external is calibrated to 2.49V)
 const float ADC_RESOLUTION = 1024.0;                              // The number of gradations of the ADC.
-const float TEMP_VOLTAGE_DIVIDER = 200000.0/(200000.0+100000.0);  // The resistor divider which reduces the voltage from the LM335
-const float VOLT_VOLTAGE_DIVIDER = 7500.0/(7500.0+30000.0);       // The resistor divider which reduces the voltage from the battery
+const float VOLT_VOLTAGE_DIVIDER = 30000.0/(30000.0+200000.0);    // The resistor divider which reduces the voltage from the battery
 const float PULSES_PER_LITRE = 450.0;                             // The number of pulses from the flow sensor per litre of flow
-const float ABSOLUTE_ZERO = -273.15;                              // Offset to convert from Kelvin to Celsius
 const unsigned long SOLENOID_PULSE_DURATION = 20;                 // Change the solenoid position with a 20 millisecond pulse
 const unsigned long SENSOR_READ_INTERVAL = 1000;                  // Read the sensors every second (value in milliseconds)
 const unsigned long SHOWER_DURATION   = 240000;                   // The shower will lock 4 minutes after being started (value in milliseconds)
@@ -44,9 +41,8 @@ void setup() {
   writeSolenoid(solenoid_open);           // Send a signal to the solenoid so it also is in a known state
 
   // Setting analogReference to EXTERNAL must be called before reading from the analog pins to prevent a short circuit
-  pinMode(LM335_PIN, INPUT);              // Set the required analog pins into INPUT mode
-  pinMode(VOLTAGE_PIN, INPUT);
-  analogReference(EXTERNAL);              // and use the external voltage reference
+  pinMode(VOLTAGE_PIN, INPUT);            // The system will read the divided battery voltage from the voltage pin
+  analogReference(EXTERNAL);              // and use the external voltage reference for calibration
 
   flow_count = 0;                         // On boot, the measured flow is 0L
   pinMode(FLOW_PIN, INPUT);               // Use the pin for input, and register the interrupt for handling flow signals.
@@ -80,7 +76,6 @@ void writeSolenoid(bool Open)
   digitalWrite(SOLENOID_INPUT_B, LOW);
 }
 
-
 // measureWaterFlow - Interrupt handler to record another signal from the flow sensor
 // Params: None
 // Returns: None
@@ -107,35 +102,18 @@ float readFlowRate()
 }
 
 
-// readTemperature - Return the current temperature in degrees Celsius
-// Params: None
-// Returns: the calculated temperature
-//
-// The sensor outputs 10 mV/K, and can be calibrated using the 10k potentiometer
-// This has been divided by a resistor divider to ensure that
-// is never above 2.5V that would maximise the analog to digital converter count
-// within the working water temperature range 0 to 65 C.
-float readTemperature()
-{
-  float count = analogRead(LM335_PIN);
-  float temperature = count * 100.0 / TEMP_VOLTAGE_DIVIDER * REFERENCE_VOLTAGE / ADC_RESOLUTION + ABSOLUTE_ZERO;
-  return temperature;
-}
-
-
 // readVoltage - Return the battery voltage in Volts
 // Params: None
 // Returns: the calculated voltage
 //
-// The battery voltage is divided between a 30k and 7k5 resistor, reducing it to 20% of the original value
-// so with the 2.5V reference chip it can read up to a maximum of 12.5V
+// First undo the effect of the resistor divider to get the original voltage,
+// then convert the count to a voltage using the reference voltage and ADC resolution
 float readVoltage()
 {
   float count = analogRead(VOLTAGE_PIN);
   float voltage = count / VOLT_VOLTAGE_DIVIDER * REFERENCE_VOLTAGE / ADC_RESOLUTION;
   return voltage;
 }
-
 
 // loop - Perform regular processing while the ATmega328P is awake
 // Params: None
@@ -177,21 +155,18 @@ void loop() {
   // Check if it is time to update the sensor values
   if ((currentTime - sensorStart) >= SENSOR_READ_INTERVAL) {
     // Read all the sensors
-    float temperature = readTemperature();
     float flow = readFlowRate();
     float voltage = readVoltage();
 
     // Send the current readings to the raspberry pi
-    char buffer[57];
-    char tempString[7];
+    char buffer[54];
     char flowString[8];
     char voltageString[7];
     // Convert each floating point reading into a string
-    dtostrf(temperature, 3, 1, tempString);   // The temperature is reported to 1 decimal place
     dtostrf(flow, 2, 3, flowString);          // The flow rate is reported to 3 decimal places
     dtostrf(voltage, 2, 2, voltageString);    // The voltage is reported to 2 decimal places
     // Create and send the string via bluetooth
-    sprintf(buffer, "Temp %s C | Flow %s L/s | Volts %s V | Solenoid %s", tempString, flowString, voltageString, solenoid_open ? "Open" : "Closed");
+    snprintf(buffer, sizeof(buffer), "Flow %s L/s | Volts %s V | Solenoid %s", flowString, voltageString, solenoid_open ? "Open" : "Closed");
     Serial.println(buffer);
 
     sensorStart = currentTime;
