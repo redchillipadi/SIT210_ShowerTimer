@@ -48,18 +48,6 @@ def play_start():
 	pwm.enable(False)
 
 
-# Play the tone when the water is warm
-def play_warm():
-	logging.info("Playing Water Warm tune")
-	pwm.enable(True)
-	play_note(440, 0.25, 0.8)
-	play_note(440, 0.25, 0.8)
-	time.sleep(0.5)
-	play_note(440, 0.25, 0.8)
-	play_note(440, 0.25, 0.8)
-	pwm.enable(False)
-
-
 # Play the tone when the shower has only one minute remaining
 def play_nearly_done():
 	logging.info("Playing Nearly Done tune")
@@ -81,7 +69,7 @@ def play_stop():
 
 
 # A dictionary mapping tune numbers to the functions that play them
-tunes = {'1': play_start, '2': play_warm, '3': play_nearly_done, '4': play_stop}
+tunes = {'1': play_start, '2': play_nearly_done, '3': play_stop}
 
 
 # Add a tune to the schedule to play it at a given time
@@ -122,18 +110,15 @@ def handle_schedule_thread():
 
 
 # Handle user input from the pipe
-# If the enter Q, then quit this process (for debugging purposes)
-# If not, then they have entered a tune number, so schedule the tune for the current time
+# Schedule the tunes for the required times
 def handle_input(input):
 	if not input:
 		return
 
 	elif input == '1':
 		schedule_tune(datetime.now(), '1')
-		schedule_tune(datetime.now() + timedelta(minutes=3), '3')
-		schedule_tune(datetime.now() + timedelta(minutes=4), '4')
-	elif input == '2':
-		schedule_tune(datetime.now(), '2')
+		schedule_tune(datetime.now() + timedelta(minutes=3), '2')
+		schedule_tune(datetime.now() + timedelta(minutes=4), '3')
 
 
 def create_fifo(path):

@@ -14,8 +14,6 @@ UUID = "0000ffe1-0000-1000-8000-00805f9b34fb"
 gatt = pygatt.GATTToolBackend();
 # Buffer to store unprocessed input between interrupts
 input_buffer = ""
-# Set to false if the user still needs to be informed when the water becomes warm
-water_warm = True
 
 # Set the log file configuration
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG, filename="/var/log/shower")
@@ -46,13 +44,10 @@ def play_tune(tune):
 # so that it will not be played again for this shower
 def process_line(line):
 	readings = line.split('|')
-	temp = None
 	flow = None
 	volts = None
 	solenoid = None
 	for reading in readings:
-		if reading[:4] == 'Temp':
-			temp = float(reading[5:].split(' ')[0])
 		if reading[:5] == ' Flow':
 			flow = float(reading[6:].split(' ')[0])
 		if reading[:6] == ' Volts':
@@ -62,11 +57,7 @@ def process_line(line):
 				solenoid = "Open"
 			elif reading[10:16] == 'Closed':
 				solenoid = "Closed"
-	logging.info(f'Readings {temp} {flow} {volts} {solenoid}')
-	global water_warm
-	if not water_warm and temp > 38:
-		play_tune(2)
-		water_warm = True
+	logging.info(f'Readings {flow} {volts} {solenoid}')
 
 
 # process_buffer - Process the buffer containing the bluetooth communication data
@@ -118,9 +109,6 @@ def unsubscribe():
 # Returns: Nothing
 def handle_input(line):
 	if line == 'O':
-		# Reset the flag so that the user will be alerted when the water becomes warm
-		global water_warm
-		water_warm = False
 		# Schedule the starting, nearly done and stop tunes
 		play_tune(1)
 		# Start the shower - send the command to the shower-bluetooth service

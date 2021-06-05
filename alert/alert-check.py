@@ -25,13 +25,12 @@ battery = 99	# Dummy value to ensure that the first update to the battery overwr
 # and save the lowest battery voltage detected (if it is lower than the current lowest reading)
 def check_values(timestamp, input):
 	readings = input.split(' ')
-	temp = float(readings[0])
-	flow = float(readings[1])
-	volts = float(readings[2])
+	flow = float(readings[0])
+	volts = float(readings[1])
 	solenoid = None
-	if readings[3] == 'Open':
+	if readings[2] == 'Open':
 		solenoid = True
-	elif readings[3] == 'Closed':
+	elif readings[2] == 'Closed':
 		solenoid = False
 	else:
 		raise ValueError()
