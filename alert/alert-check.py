@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 import requests
 
-# This file is run every hour by cron.hourly and checks the last hour of the log file for leaks and low battery status (< 9V)
+# This file is run every hour by cron.hourly and checks the last hour of the log file for leaks and low battery status (< 12V)
 # It then emails the administrator if issues were detected
 
 LOGFILE = "/var/log/shower"
@@ -83,7 +83,7 @@ def main():
 		trigger_alert("LeakDetected", volume)
 
 	global battery
-	if battery < 9:
+	if battery < 12:
 		trigger_alert("BatteryLow", battery)
 
 # When the script is run call the main function
