@@ -48,7 +48,7 @@ def process_line(line):
 	volts = None
 	solenoid = None
 	for reading in readings:
-		if reading[:5] == ' Flow':
+		if reading[:4] == 'Flow':
 			flow = float(reading[6:].split(' ')[0])
 		if reading[:6] == ' Volts':
 			volts = float(reading[7:].split(' ')[0])
