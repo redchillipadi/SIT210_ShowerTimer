@@ -1,0 +1,13 @@
+[Unit]
+Description=Shower Timer GUI
+Wants=shower-bluetooth.service
+
+[Service]
+User=ubuntu
+Type=simple
+WorkingDirectory=/home/ubuntu/gui
+ExecStart=/home/ubuntu/gui/main
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

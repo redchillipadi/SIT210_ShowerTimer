@@ -1,0 +1,13 @@
+[Unit]
+Description=Shower Bluetooth Interface
+Wants=shower-music.service
+
+[Service]
+User=ubuntu
+Type=simple
+WorkingDirectory=/home/ubuntu/bluetooth
+ExecStart=/usr/bin/python3 /home/ubuntu/bluetooth/bluetooth.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
